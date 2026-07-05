@@ -28,6 +28,7 @@ export ANDROID_HOME="/content/android-sdk"
 export ANDROID_CMD_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip"
 export NODE_VERSION="20.x"
 export JAVA_VERSION="17"
+export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
 export ANDROID_API_LEVEL="34"
 export BUILD_TOOLS_VERSION="34.0.0"
 
@@ -89,7 +90,9 @@ setup_android_sdk() {
     export PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin"
     
     log_info "Accepting Android SDK licenses..."
+    set +o pipefail
     yes | sdkmanager --licenses > /dev/null 2>&1
+    set -o pipefail
     
     log_info "Installing Android Platforms and Build Tools..."
     sdkmanager --update > /dev/null 2>&1
