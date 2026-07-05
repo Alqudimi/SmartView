@@ -1,0 +1,6 @@
+{
+  "name": "Smart View Receiver",
+  "description": "تطبيق ومحاكي استقبال بث الشاشة Smart View / WiFi Direct مع الكود المصدري الكامل للـ Backend والـ React Native",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
