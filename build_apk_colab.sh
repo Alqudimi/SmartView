@@ -7,12 +7,13 @@
 # Description:
 # This script automates the entire CI/CD pipeline for building the Smart View
 # Android application from source. It installs necessary system dependencies
-# (Node.js 20, Java 17, Android SDK), configures the environment, builds the
+# (Node.js 20, Java 21, Android SDK), configures the environment, builds the
 # React frontend, integrates Capacitor, and compiles the final APK via Gradle.
 #
 # Usage:
-# 1. Upload your project as `project.zip` to the Colab `/content` directory.
-# 2. Run this script: `bash build_apk_colab.sh`
+# 1. Clone the repository into Google Colab or your Ubuntu environment.
+# 2. Run this script: `bash build_apk_colab.sh [PROJECT_PATH]`
+#    If PROJECT_PATH is not provided, it defaults to /content/SmartView
 # ==============================================================================
 
 set -e
@@ -21,14 +22,13 @@ set -o pipefail
 # ------------------------------------------------------------------------------
 # Configuration & Environment Variables
 # ------------------------------------------------------------------------------
-export PROJECT_ZIP="/content/project.zip"
-export WORK_DIR="/content/smart_view_build"
-export OUTPUT_DIR="/content/output"
-export ANDROID_HOME="/content/android-sdk"
+export WORK_DIR="${1:-/content/SmartView}"
+export OUTPUT_DIR="${WORK_DIR}/output"
+export ANDROID_HOME="${WORK_DIR}/android-sdk"
 export ANDROID_CMD_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip"
 export NODE_VERSION="20.x"
-export JAVA_VERSION="17"
-export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+export JAVA_VERSION="21"
+export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
 export ANDROID_API_LEVEL="34"
 export BUILD_TOOLS_VERSION="34.0.0"
 
@@ -73,19 +73,17 @@ setup_system() {
 setup_android_sdk() {
     log_info "Phase 2: Provisioning Android SDK and Command Line Tools..."
     
-    if [ -d "$ANDROID_HOME" ]; then
-        log_warn "Android SDK directory already exists at $ANDROID_HOME. Cleaning up..."
-        rm -rf "$ANDROID_HOME"
+    if [ ! -d "$ANDROID_HOME" ]; then
+        mkdir -p "${ANDROID_HOME}/cmdline-tools"
+        
+        cd /tmp
+        log_info "Downloading Android Command Line Tools..."
+        wget -q "${ANDROID_CMD_TOOLS_URL}" -O cmdtools.zip
+        unzip -q cmdtools.zip -d "${ANDROID_HOME}/cmdline-tools"
+        
+        # Restructure for the new SDK manager format
+        mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"
     fi
-    
-    mkdir -p "${ANDROID_HOME}/cmdline-tools"
-    cd /tmp
-    log_info "Downloading Android Command Line Tools..."
-    wget -q "${ANDROID_CMD_TOOLS_URL}" -O cmdtools.zip
-    unzip -q cmdtools.zip -d "${ANDROID_HOME}/cmdline-tools"
-    
-    # Restructure for the new SDK manager format
-    mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest"
     
     export PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin"
     
@@ -103,43 +101,19 @@ setup_android_sdk() {
 }
 
 # ------------------------------------------------------------------------------
-# Phase 3: Project Extraction
-# ------------------------------------------------------------------------------
-extract_project() {
-    log_info "Phase 3: Locating and extracting project source code..."
-    
-    if [ ! -f "$PROJECT_ZIP" ]; then
-        log_error "Project archive not found at ${PROJECT_ZIP}. Please upload 'project.zip' to '/content'."
-    fi
-    
-    rm -rf "$WORK_DIR"
-    mkdir -p "$WORK_DIR"
-    
-    log_info "Extracting ${PROJECT_ZIP}..."
-    unzip -q "$PROJECT_ZIP" -d "$WORK_DIR"
-    cd "$WORK_DIR"
-    
-    # Handle nested directories if the zip contains a single root folder
-    ROOT_DIR=$(ls -1q | head -n 1)
-    if [ $(ls -1q | wc -l) -eq 1 ] && [ -d "$ROOT_DIR" ]; then
-        log_info "Nested directory detected. Adjusting workspace..."
-        mv "$ROOT_DIR"/* .
-        mv "$ROOT_DIR"/.* . 2>/dev/null || true
-        rmdir "$ROOT_DIR"
-    fi
-    
-    log_success "Project extracted to ${WORK_DIR}."
-}
-
-# ------------------------------------------------------------------------------
-# Phase 4: Web Frontend Build
+# Phase 3: Web Frontend Build
 # ------------------------------------------------------------------------------
 build_web_app() {
-    log_info "Phase 4: Building React Web Application..."
+    log_info "Phase 3: Building React Web Application..."
+    
+    if [ ! -d "$WORK_DIR" ]; then
+        log_error "Project directory not found at ${WORK_DIR}. Please pass the correct path or ensure the folder exists."
+    fi
+
     cd "$WORK_DIR"
     
     if [ ! -f "package.json" ]; then
-        log_error "package.json not found in the project root."
+        log_error "package.json not found in ${WORK_DIR}. Make sure this is the correct project directory."
     fi
     
     log_info "Installing NPM dependencies..."
@@ -156,10 +130,10 @@ build_web_app() {
 }
 
 # ------------------------------------------------------------------------------
-# Phase 5: Capacitor Native Integration
+# Phase 4: Capacitor Native Integration
 # ------------------------------------------------------------------------------
 integrate_capacitor() {
-    log_info "Phase 5: Bootstrapping Capacitor Native Bridge..."
+    log_info "Phase 4: Bootstrapping Capacitor Native Bridge..."
     cd "$WORK_DIR"
     
     log_info "Installing Capacitor dependencies..."
@@ -179,10 +153,10 @@ integrate_capacitor() {
 }
 
 # ------------------------------------------------------------------------------
-# Phase 6: APK Compilation (Gradle)
+# Phase 5: APK Compilation (Gradle)
 # ------------------------------------------------------------------------------
 compile_apk() {
-    log_info "Phase 6: Compiling Android APK via Gradle..."
+    log_info "Phase 5: Compiling Android APK via Gradle..."
     cd "${WORK_DIR}/android"
     
     log_info "Making Gradle wrapper executable..."
@@ -210,6 +184,7 @@ main() {
     echo -e "${COLOR_INFO}"
     echo "============================================================"
     echo "  Smart View Automated Build Pipeline Initiated"
+    echo "  Target Workspace: ${WORK_DIR}"
     echo "============================================================"
     echo -e "${COLOR_RESET}"
     
@@ -218,7 +193,6 @@ main() {
     
     setup_system
     setup_android_sdk
-    extract_project
     build_web_app
     integrate_capacitor
     compile_apk
