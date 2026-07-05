@@ -5,7 +5,7 @@ Understanding the repository layout.
 ```text
 /app/applet
 ├── .env.example          # Environment variables template
-├── Colab_Build_APK.ipynb # Automated cloud build script
+├── build_apk_colab.sh # Automated cloud build script
 ├── package.json          # Node dependencies and scripts
 ├── vite.config.ts        # Vite build configuration
 ├── tsconfig.json         # TypeScript compiler options

@@ -16,7 +16,7 @@ For the fastest setup, we provide an automated Jupyter Notebook that handles the
 
 1. Download your project files as a ZIP archive.
 2. Rename the archive to `project.zip`.
-3. Open Google Colab and upload the provided `Colab_Build_APK.ipynb` file.
+3. Open Google Colab and upload the provided `build_apk_colab.sh` file.
 4. Upload `project.zip` to the Colab files pane.
 5. Run the notebook cells sequentially. The final step will generate a `SmartViewReceiver.apk` file for download.
 

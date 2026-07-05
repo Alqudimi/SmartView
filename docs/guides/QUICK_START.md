@@ -13,7 +13,7 @@ You can preview the UI components directly in your browser.
 ## 2. Build the Android APK (Colab Method - Recommended)
 To quickly get a working APK without installing Android Studio:
 1. Download the repository as `project.zip`.
-2. Open `Colab_Build_APK.ipynb` in Google Colab.
+2. Open `build_apk_colab.sh` in Google Colab.
 3. Upload `project.zip` to your Colab session.
 4. Run all cells. The output will be `SmartViewReceiver.apk`.
 

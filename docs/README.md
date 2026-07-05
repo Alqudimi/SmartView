@@ -19,5 +19,5 @@ We maintain comprehensive documentation for all aspects of the system. Please re
 To instantly generate an Android APK without setting up a local development environment:
 1. Download this project as a ZIP file.
 2. Rename it to `project.zip`.
-3. Open the included `Colab_Build_APK.ipynb` in Google Colab.
+3. Open the included `build_apk_colab.sh` in Google Colab.
 4. Follow the notebook instructions to compile and download your APK.
