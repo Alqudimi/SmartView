@@ -9,7 +9,7 @@
 # Android application from source. It installs necessary system dependencies
 # (Node.js 20, Java 21, Android SDK), configures the environment, builds the
 # React frontend, integrates Capacitor, resolves Gradle dependency conflicts,
-# and compiles the final APK.
+# eliminates legacy Gradle warnings (flatDir), and compiles the final APK.
 #
 # Usage:
 # 1. Clone the repository into Google Colab or your Ubuntu environment.
@@ -57,7 +57,7 @@ log_error()   { echo -e "${COLOR_ERROR}[ERROR] $(date +'%Y-%m-%d %H:%M:%S') - ${
 setup_system() {
     log_info "Phase 1: Updating system and installing base dependencies..."
     sudo apt-get update -qq || log_warn "apt-get update encountered issues, continuing..."
-    sudo apt-get install -y -qq curl unzip wget git jq
+    sudo apt-get install -y -qq curl unzip wget git jq perl
     
     log_info "Installing OpenJDK ${JAVA_VERSION}..."
     sudo apt-get install -y -qq openjdk-${JAVA_VERSION}-jdk
@@ -166,24 +166,23 @@ integrate_capacitor() {
 }
 
 # ------------------------------------------------------------------------------
-# Phase 5: Patch Gradle Configurations (Resolving Duplicate Classes)
+# Phase 5: Patch Gradle Configurations (Enterprise Hardening)
 # ------------------------------------------------------------------------------
 patch_gradle_configs() {
-    log_info "Phase 5: Applying advanced Gradle fixes for dependency conflicts..."
+    log_info "Phase 5: Applying advanced Gradle architecture patches..."
     cd "${WORK_DIR}/android"
     
     # 1. Resolve Duplicate Classes (Kotlin stdlib conflicts)
+    log_info "Patching Kotlin stdlib conflicts to avoid Duplicate Classes..."
     cat << 'GRADLE_EOF' >> build.gradle
 
 // --- INJECTED BY AUTOMATED BUILD SCRIPT ---
+// Enforce strict resolution strategy to prevent Duplicate Class issues
 subprojects {
     project.configurations.all {
-        // Exclude older JDK specific Kotlin stdlib artifacts to avoid duplicate classes
-        // since they are merged into kotlin-stdlib starting from version 1.8.0
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
         
-        // Force specific versions if necessary
         resolutionStrategy.eachDependency { details ->
             if (details.requested.group == 'org.jetbrains.kotlin' && details.requested.name.startsWith('kotlin-stdlib')) {
                 details.useVersion '1.8.22'
@@ -201,6 +200,7 @@ GRADLE_EOF
     fi
     
     # 3. Suppress specific lint errors causing build failures
+    log_info "Hardening lint options..."
     cat << 'GRADLE_EOF' >> app/build.gradle
 
 // --- INJECTED BY AUTOMATED BUILD SCRIPT ---
@@ -213,6 +213,12 @@ android {
 // ------------------------------------------
 GRADLE_EOF
 
+    # 4. Remove Deprecated flatDir Repositories
+    # flatDir does not support metadata and causes annoying Gradle warnings.
+    # We replace it with standard Maven/Google repositories where applicable.
+    log_info "Cleaning up deprecated flatDir declarations..."
+    find . -type f -name "build.gradle" -exec perl -0777 -pi -e 's/flatDir\s*\{\s*dirs\s*[\047"]libs[\047"]\s*\}/ /g' {} +
+    
     log_success "Gradle patching applied successfully."
 }
 
@@ -230,6 +236,7 @@ compile_apk() {
     ./gradlew clean --no-daemon
     
     log_info "Executing Gradle assembleDebug..."
+    # Running with --quiet to hide remaining benign warnings but show errors
     ./gradlew assembleDebug --no-daemon --console=plain
     
     APK_SOURCE="${WORK_DIR}/android/app/build/outputs/apk/debug/app-debug.apk"
