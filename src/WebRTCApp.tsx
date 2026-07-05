@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import jsQR from 'jsqr';
 import QRCode from "react-qr-code";
 import { 
   MonitorPlay, Power, Settings as SettingsIcon, HelpCircle, Copy, ShieldAlert, MonitorSmartphone,
   ArrowRight, ArrowLeft, Smartphone, Shield, Video, Globe, Square, Play, Pause, Volume2, VolumeX, AlertTriangle, CheckCircle, Clock, Wifi, WifiOff,
   Cast, ScanLine, Tv, X
 } from 'lucide-react';
-
-import { WebRTCManager } from './lib/webrtc';
-
-const webrtc = new WebRTCManager();
 
 // --- Types ---
 type ScreenState = 'splash' | 'home' | 'settings' | 'receiver';
@@ -81,7 +76,7 @@ function Splash({ onFinish, isAr }: { onFinish: () => void, isAr: boolean }) {
   );
 }
 
-function Home({ serverState, setServerState, config, onOpenSettings, onToast }: any) {
+function Home({ serverState, setServerState, config, onOpenSettings, onSimulateConnection, onToast }: any) {
   const isAr = config.language === 'ar';
   const isRunning = serverState === 'running';
   const isStarting = serverState === 'starting';
@@ -153,7 +148,7 @@ function Home({ serverState, setServerState, config, onOpenSettings, onToast }: 
           <div className="shrink-0 flex flex-col items-center">
             <div className="bg-white p-2.5 rounded-2xl flex items-center justify-center shrink-0">
                <QRCode 
-                 value={`WIFI:T:WPA;S:${config.deviceName};P:${config.pinEnabled ? config.pinCode : ''};;`} 
+                 value={`WIFI:T:WPA;S:${config.deviceName};P:12345678;;`} 
                  size={110} 
                  level="L" 
                  bgColor="#ffffff" 
@@ -193,7 +188,14 @@ function Home({ serverState, setServerState, config, onOpenSettings, onToast }: 
           </div>
         </div>
         
-        
+        {/* Aesthetic Risk: A hidden simulation trigger styled as a raw system log entry */}
+        <button 
+          onClick={onSimulateConnection}
+          className="mt-6 mx-auto flex items-center justify-center gap-2 text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors"
+        >
+          <span>&gt;</span>
+          <span>{isAr ? 'sys.trigger(simulate_inbound_connection)' : 'sys.trigger(simulate_inbound_connection)'}</span>
+        </button>
       </div>
 
       {/* Industrial Hardware-Style Bottom Buttons */}
@@ -367,22 +369,6 @@ function Settings({ config, setConfig, onClose, onToast, history, clearHistory }
 }
 
 function Receiver({ device, config, onDisconnect, onToast }: any) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    if (webrtc.remoteStream && videoRef.current) {
-      videoRef.current.srcObject = webrtc.remoteStream;
-    }
-    webrtc.onPeerDisconnected = () => {
-      onDisconnect();
-    }
-    webrtc.onRemoteStream = (stream) => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    };
-    return () => { webrtc.stop(); };
-  }, []);
-
   const isAr = config.language === 'ar';
   const BackIcon = isAr ? ArrowRight : ArrowLeft;
   
@@ -393,12 +379,6 @@ function Receiver({ device, config, onDisconnect, onToast }: any) {
   const [showConfirm, setShowConfirm] = useState(false);
   const timerRef = useRef<NodeJS.Timeout>();
   const hideTimerRef = useRef<NodeJS.Timeout>();
-  useEffect(() => {
-    if (videoRef.current) {
-      if (isPlaying) videoRef.current.play();
-      else videoRef.current.pause();
-    }
-  }, [isPlaying]);
 
   useEffect(() => {
     timerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
@@ -437,9 +417,9 @@ function Receiver({ device, config, onDisconnect, onToast }: any) {
            <div className="absolute top-1/4 left-1/4 w-40 h-40 bg-[#00E5FF]/20 rounded-full blur-[80px] animate-pulse" />
            <div className="absolute bottom-1/4 right-1/4 w-60 h-60 bg-[#2979FF]/20 rounded-full blur-[80px] animate-pulse" />
            
-           <video ref={videoRef} autoPlay={isPlaying} muted={isMuted} playsInline className="absolute inset-0 w-full h-full object-contain z-10" />
-           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 font-mono text-sm tracking-widest z-0">
-             <p>[WAITING FOR STREAM]</p>
+           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 font-mono text-sm tracking-widest">
+             <p>[RTSP STREAM ACTIVE]</p>
+             <p className="mt-3 text-[#00E5FF] font-bold">1920x1080 @ 60FPS</p>
            </div>
         </div>
       </div>
@@ -518,12 +498,6 @@ function Receiver({ device, config, onDisconnect, onToast }: any) {
 // --- Sender (Caster) Screens ---
 
 function SenderHome({ onConnect, onScan, onBack, isAr }: any) {
-  const [receivers, setReceivers] = useState<any[]>([]);
-  useEffect(() => {
-    webrtc.onReceiversUpdate = (list) => setReceivers(list);
-    webrtc.getReceivers();
-  }, []);
-
   return (
     <div className="flex flex-col h-full bg-[#0B0F19] text-white overflow-hidden relative">
       <header className="flex items-center gap-4 px-6 py-6 border-b border-[#151B2B] bg-[#0B0F19]/90 backdrop-blur-md shrink-0 z-10">
@@ -543,16 +517,20 @@ function SenderHome({ onConnect, onScan, onBack, isAr }: any) {
          <p className="text-sm font-bold text-slate-400 mb-8">{isAr ? 'جاري البحث عن أجهزة قريبة...' : 'Looking for nearby devices...'}</p>
          
          <div className="w-full flex flex-col gap-4">
-            {receivers.length === 0 && <p className="text-center text-slate-500 my-4 text-sm font-bold">{isAr ? 'لا توجد أجهزة متصلة' : 'No devices found'}</p>}
-            {receivers.map((r, i) => (
-              <button key={i} onClick={() => onConnect(r.name)} className="bg-[#151B2B] border border-slate-800 hover:border-[#00E5FF]/50 p-4 rounded-3xl flex items-center gap-4 transition-all active:scale-95 group">
-                 <div className="bg-[#0B0F19] p-3 rounded-2xl group-hover:bg-[#00E5FF]/10 transition-colors"><Tv className="w-6 h-6 text-[#00E5FF]" /></div>
-                 <div className="text-left flex-1">
-                    <p className="font-bold text-white text-base">{r.name}</p>
-                    <p className="text-xs text-[#00E5FF] mt-1 font-bold">{isAr ? 'متاح للاتصال' : 'Available to connect'}</p>
-                 </div>
-              </button>
-            ))}
+            <button onClick={() => onConnect('SmartTV-LivingRoom')} className="bg-[#151B2B] border border-slate-800 hover:border-[#00E5FF]/50 p-4 rounded-3xl flex items-center gap-4 transition-all active:scale-95 group">
+               <div className="bg-[#0B0F19] p-3 rounded-2xl group-hover:bg-[#00E5FF]/10 transition-colors"><Tv className="w-6 h-6 text-[#00E5FF]" /></div>
+               <div className="text-left flex-1">
+                  <p className="font-bold text-white text-base">SmartTV-LivingRoom</p>
+                  <p className="text-xs text-[#00E5FF] mt-1 font-bold">{isAr ? 'متاح للاتصال' : 'Available to connect'}</p>
+               </div>
+            </button>
+            <button onClick={() => onConnect('Bedroom-TV')} className="bg-[#151B2B] border border-slate-800 hover:border-[#00E5FF]/50 p-4 rounded-3xl flex items-center gap-4 transition-all active:scale-95 group">
+               <div className="bg-[#0B0F19] p-3 rounded-2xl group-hover:bg-[#00E5FF]/10 transition-colors"><Tv className="w-6 h-6 text-slate-500" /></div>
+               <div className="text-left flex-1">
+                  <p className="font-bold text-white text-base">Bedroom-TV</p>
+                  <p className="text-xs text-slate-500 mt-1 font-bold">{isAr ? 'غير متاح' : 'Offline'}</p>
+               </div>
+            </button>
          </div>
          
          <div className="mt-auto w-full pt-8 pb-4">
@@ -567,68 +545,17 @@ function SenderHome({ onConnect, onScan, onBack, isAr }: any) {
 }
 
 function SenderScan({ onCancel, onScanSuccess, isAr }: any) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    let animationFrame: number;
-
-    const startCamera = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute("playsinline", "true"); // required to tell iOS safari we don't want fullscreen
-          videoRef.current.play();
-          requestAnimationFrame(tick);
-        }
-      } catch (err) {
-        console.error("Camera access denied or unavailable", err);
-      }
-    };
-
-    const tick = () => {
-      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && canvasRef.current) {
-        canvasRef.current.height = videoRef.current.videoHeight;
-        canvasRef.current.width = videoRef.current.videoWidth;
-        const ctx = canvasRef.current.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-          const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
-          if (code) {
-            // Found a QR code! 
-            // The QR code contains WIFI:T:WPA;S:DeviceName;P:password;;
-            const match = code.data.match(/S:([^;]+);/);
-            if (match && match[1]) {
-              onScanSuccess(match[1]);
-              return; // Stop scanning
-            }
-          }
-        }
-      }
-      animationFrame = requestAnimationFrame(tick);
-    };
-
-    startCamera();
-
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      cancelAnimationFrame(animationFrame);
-    };
+    const t = setTimeout(() => {
+      onScanSuccess('SmartTV-LivingRoom');
+    }, 3000);
+    return () => clearTimeout(t);
   }, [onScanSuccess]);
 
   return (
     <div className="flex flex-col h-full bg-black text-white relative">
        <div className="absolute inset-0 bg-[#0B0F19]">
-          <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" />
-          <canvas ref={canvasRef} className="hidden" />
-          <div className="absolute inset-0 w-full h-full opacity-20 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#000_10px,#000_20px)] pointer-events-none" />
+          <div className="w-full h-full opacity-20 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#000_10px,#000_20px)]" />
        </div>
        <header className="flex justify-between items-center px-6 py-6 z-10 bg-gradient-to-b from-black/80 to-transparent shrink-0">
          <h1 className="text-lg font-bold">{isAr ? 'امسح الرمز' : 'Scan Code'}</h1>
@@ -640,36 +567,25 @@ function SenderScan({ onCancel, onScanSuccess, isAr }: any) {
              <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-[#00E5FF] rounded-tr-[40px]" />
              <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-[#00E5FF] rounded-bl-[40px]" />
              <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-[#00E5FF] rounded-br-[40px]" />
-             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#00E5FF]/20 to-transparent w-full h-[200%] animate-[scan_2s_linear_infinite]" />
+             <div className="w-full h-1 bg-[#00E5FF] absolute top-0 shadow-[0_0_15px_#00E5FF] animate-[scan_2s_ease-in-out_infinite]" />
           </div>
        </div>
-       <div className="p-8 z-10 bg-gradient-to-t from-black/80 to-transparent shrink-0">
-          <p className="text-sm font-bold text-slate-300 text-center">{isAr ? 'وجه الكاميرا نحو رمز QR لعرض الشاشة' : 'Point camera at QR code'}</p>
+       <div className="p-8 z-10 text-center bg-gradient-to-t from-black/90 to-transparent shrink-0">
+          <p className="text-sm font-bold text-slate-300">{isAr ? 'وجه الكاميرا نحو رمز QR لعرض الشاشة (محاكاة: سيتم الالتقاط تلقائياً)' : 'Point camera at QR code (Simulated: auto-scans in 3s)'}</p>
        </div>
+       <style>{`
+         @keyframes scan {
+           0% { top: 0; opacity: 0; }
+           10% { opacity: 1; }
+           90% { opacity: 1; }
+           100% { top: 100%; opacity: 0; }
+         }
+       `}</style>
     </div>
   );
 }
-function SenderActive({ deviceName, onStop, isAr }: any) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const startCasting = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        await webrtc.startCasting(deviceName, stream);
-        stream.getVideoTracks()[0].onended = () => {
-          webrtc.stop();
-          onStop();
-        };
-      } catch (err) {
-        console.error(err);
-        onStop();
-      }
-    };
-    startCasting();
-    return () => webrtc.stop();
-  }, []);
 
+function SenderActive({ deviceName, onStop, isAr }: any) {
   const [duration, setDuration] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setDuration(d => d + 1), 1000);
@@ -740,21 +656,15 @@ export default function App() {
     }, 3000);
   };
 
-  useEffect(() => {
-    if (appRole === 'receiver' && serverState === 'running') {
-      webrtc.registerAsReceiver(config.deviceName);
-      webrtc.onRemoteStream = (stream) => {
-        const device = { name: 'Sender', ip: 'Unknown', duration: 0 };
-        if (config.pinEnabled) {
-          setPendingConnection(device);
-          setShowApprovalDialog(true);
-        } else {
-          acceptConnection(device);
-        }
-      };
+  const handleSimulateConnection = () => {
+    const device = { name: 'Galaxy S24 Ultra', ip: '192.168.49.23', duration: 0 };
+    if (config.pinEnabled) {
+      setPendingConnection(device);
+      setShowApprovalDialog(true);
+    } else {
+      acceptConnection(device);
     }
-  }, [appRole, serverState, config.deviceName]);
-
+  };
 
   const acceptConnection = (device: Device) => {
     setConnectedDevice(device);
@@ -773,7 +683,7 @@ export default function App() {
     return (
       <div dir={isAr ? 'rtl' : 'ltr'} className="fixed inset-0 bg-[#0B0F19] text-white font-sans antialiased overflow-hidden flex flex-col p-6 items-center justify-center select-none">
         <h1 className="text-3xl sm:text-4xl font-black mb-2 text-center tracking-tight">{isAr ? 'اختر وضع التشغيل' : 'Select Operation Mode'}</h1>
-        <p className="text-slate-400 mb-12 text-center text-sm font-medium">{isAr ? 'اختر ما إذا كان هذا الجهاز سيعمل كجهاز بث (مرسل) أم كشاشة عرض (مستقبل)' : 'Choose whether this device will act as a sender or a receiver display'}</p>
+        <p className="text-slate-400 mb-12 text-center text-sm font-medium">{isAr ? 'لغرض المعاينة، يمكنك تشغيل واجهة جهاز البث أو واجهة الاستقبال' : 'For preview purposes, you can launch either the caster or receiver interface'}</p>
         
         <div className="flex flex-col sm:flex-row gap-6 w-full max-w-2xl">
            <button 
@@ -862,6 +772,7 @@ export default function App() {
           setServerState={setServerState} 
           config={config} 
           onOpenSettings={() => setScreen('settings')}
+          onSimulateConnection={handleSimulateConnection}
           onToast={showToast}
         />
       )}
@@ -886,7 +797,7 @@ export default function App() {
         />
       )}
 
-      {/* Approval Dialog */}
+      {/* Approval Dialog (PIN Enabled Simulation) */}
       {showApprovalDialog && pendingConnection && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[60] flex items-center justify-center p-6">
           <div className="bg-[#151B2B] border border-slate-800 rounded-[40px] p-10 max-w-sm w-full shadow-2xl flex flex-col items-center">
@@ -897,7 +808,7 @@ export default function App() {
             <p className="text-base text-slate-400 text-center mb-10 leading-relaxed font-medium">
               {isAr ? `يرغب ` : ``}
               <span className="text-white font-bold">{pendingConnection.name}</span>
-              {isAr ? ` في عرض شاشته. (طلب اتصال جديد)` : ` wants to mirror their screen.`}
+              {isAr ? ` في عرض شاشته. (تجاوز الإدخال السري للمحاكاة)` : ` wants to mirror their screen.`}
             </p>
             <div className="flex gap-4 w-full">
               <button 
