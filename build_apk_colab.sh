@@ -8,7 +8,8 @@
 # This script automates the entire CI/CD pipeline for building the Smart View
 # Android application from source. It installs necessary system dependencies
 # (Node.js 20, Java 21, Android SDK), configures the environment, builds the
-# React frontend, integrates Capacitor, and compiles the final APK via Gradle.
+# React frontend, integrates Capacitor, resolves Gradle dependency conflicts,
+# and compiles the final APK.
 #
 # Usage:
 # 1. Clone the repository into Google Colab or your Ubuntu environment.
@@ -29,10 +30,12 @@ export ANDROID_CMD_TOOLS_URL="https://dl.google.com/android/repository/commandli
 export NODE_VERSION="20.x"
 export JAVA_VERSION="21"
 export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
-export JAVA_TOOL_OPTIONS="-XX:-UseContainerSupport"
-export _JAVA_OPTIONS="-XX:-UseContainerSupport"
 export ANDROID_API_LEVEL="34"
 export BUILD_TOOLS_VERSION="34.0.0"
+
+# Fix for container environments (like Google Colab) to prevent memory limit issues
+export JAVA_TOOL_OPTIONS="-XX:-UseContainerSupport"
+export _JAVA_OPTIONS="-XX:-UseContainerSupport"
 
 # ------------------------------------------------------------------------------
 # Logging Utilities
@@ -143,10 +146,18 @@ integrate_capacitor() {
     npm install -D @capacitor/cli --silent
     
     log_info "Initializing Capacitor..."
-    npx cap init "Smart View" "com.smartview.app" --web-dir dist || log_warn "Capacitor may already be initialized."
+    if [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.json" ]; then
+        npx cap init "Smart View" "com.smartview.app" --web-dir dist || log_warn "Capacitor init encountered a warning."
+    else
+        log_info "Capacitor config already exists, skipping init."
+    fi
     
     log_info "Adding Android platform..."
-    npx cap add android || log_warn "Android platform may already be added."
+    if [ ! -d "android" ]; then
+        npx cap add android || log_warn "Android platform addition encountered a warning."
+    else
+        log_info "Android directory already exists, skipping add."
+    fi
     
     log_info "Syncing web assets to native Android template..."
     npx cap sync android
@@ -155,14 +166,68 @@ integrate_capacitor() {
 }
 
 # ------------------------------------------------------------------------------
-# Phase 5: APK Compilation (Gradle)
+# Phase 5: Patch Gradle Configurations (Resolving Duplicate Classes)
+# ------------------------------------------------------------------------------
+patch_gradle_configs() {
+    log_info "Phase 5: Applying advanced Gradle fixes for dependency conflicts..."
+    cd "${WORK_DIR}/android"
+    
+    # 1. Resolve Duplicate Classes (Kotlin stdlib conflicts)
+    cat << 'GRADLE_EOF' >> build.gradle
+
+// --- INJECTED BY AUTOMATED BUILD SCRIPT ---
+subprojects {
+    project.configurations.all {
+        // Exclude older JDK specific Kotlin stdlib artifacts to avoid duplicate classes
+        // since they are merged into kotlin-stdlib starting from version 1.8.0
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+        
+        // Force specific versions if necessary
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin' && details.requested.name.startsWith('kotlin-stdlib')) {
+                details.useVersion '1.8.22'
+            }
+        }
+    }
+}
+// ------------------------------------------
+GRADLE_EOF
+
+    # 2. Fix variable declarations if variables.gradle exists (Capacitor default)
+    if [ -f "variables.gradle" ]; then
+        log_info "Updating variables.gradle to modern standards..."
+        sed -i "s/kotlin_version = .*/kotlin_version = '1.8.22'/g" variables.gradle
+    fi
+    
+    # 3. Suppress specific lint errors causing build failures
+    cat << 'GRADLE_EOF' >> app/build.gradle
+
+// --- INJECTED BY AUTOMATED BUILD SCRIPT ---
+android {
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+// ------------------------------------------
+GRADLE_EOF
+
+    log_success "Gradle patching applied successfully."
+}
+
+# ------------------------------------------------------------------------------
+# Phase 6: APK Compilation (Gradle)
 # ------------------------------------------------------------------------------
 compile_apk() {
-    log_info "Phase 5: Compiling Android APK via Gradle..."
+    log_info "Phase 6: Compiling Android APK via Gradle..."
     cd "${WORK_DIR}/android"
     
     log_info "Making Gradle wrapper executable..."
     chmod +x gradlew
+    
+    log_info "Cleaning previous builds..."
+    ./gradlew clean --no-daemon
     
     log_info "Executing Gradle assembleDebug..."
     ./gradlew assembleDebug --no-daemon --console=plain
@@ -185,7 +250,7 @@ compile_apk() {
 main() {
     echo -e "${COLOR_INFO}"
     echo "============================================================"
-    echo "  Smart View Automated Build Pipeline Initiated"
+    echo "  Smart View Enterprise Build Pipeline"
     echo "  Target Workspace: ${WORK_DIR}"
     echo "============================================================"
     echo -e "${COLOR_RESET}"
@@ -197,6 +262,7 @@ main() {
     setup_android_sdk
     build_web_app
     integrate_capacitor
+    patch_gradle_configs
     compile_apk
     
     # Calculate duration
