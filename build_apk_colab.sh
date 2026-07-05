@@ -29,6 +29,8 @@ export ANDROID_CMD_TOOLS_URL="https://dl.google.com/android/repository/commandli
 export NODE_VERSION="20.x"
 export JAVA_VERSION="21"
 export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
+export JAVA_TOOL_OPTIONS="-XX:-UseContainerSupport"
+export _JAVA_OPTIONS="-XX:-UseContainerSupport"
 export ANDROID_API_LEVEL="34"
 export BUILD_TOOLS_VERSION="34.0.0"
 
